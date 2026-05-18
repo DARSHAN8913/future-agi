@@ -134,6 +134,58 @@ class TestCreateScenarioSerializer:
         assert "10" in rendered_error
         assert "1" in rendered_error
 
+    def test_create_scenario_serializer_dataset_at_min_rows_passes(
+        self, mock_request, organization, workspace, user
+    ):
+        """Boundary: dataset_id with exactly ``MIN_DATASET_ROWS`` rows must pass."""
+        floor = CreateScenarioSerializer._no_of_rows_min()
+        dataset = Dataset.no_workspace_objects.create(
+            name="Exactly-floor source",
+            organization=organization,
+            workspace=workspace,
+            user=user,
+            source=DatasetSourceChoices.BUILD.value,
+        )
+        Row.objects.bulk_create([Row(dataset=dataset, order=i) for i in range(floor)])
+
+        data = {
+            "name": "At-floor scenario",
+            "kind": "dataset",
+            "dataset_id": str(dataset.id),
+        }
+        serializer = CreateScenarioSerializer(
+            data=data, context={"request": mock_request}
+        )
+        assert serializer.is_valid(), serializer.errors
+
+    def test_create_scenario_serializer_dataset_one_below_min_rows_rejected(
+        self, mock_request, organization, workspace, user
+    ):
+        """Boundary: ``MIN_DATASET_ROWS - 1`` rows must be rejected so the
+        comparison stays strict (``<``, not ``<=``)."""
+        floor = CreateScenarioSerializer._no_of_rows_min()
+        dataset = Dataset.no_workspace_objects.create(
+            name="One-below-floor source",
+            organization=organization,
+            workspace=workspace,
+            user=user,
+            source=DatasetSourceChoices.BUILD.value,
+        )
+        Row.objects.bulk_create(
+            [Row(dataset=dataset, order=i) for i in range(floor - 1)]
+        )
+
+        data = {
+            "name": "Below-floor scenario",
+            "kind": "dataset",
+            "dataset_id": str(dataset.id),
+        }
+        serializer = CreateScenarioSerializer(
+            data=data, context={"request": mock_request}
+        )
+        assert not serializer.is_valid()
+        assert "dataset_id" in serializer.errors
+
     def test_create_scenario_serializer_script_valid(self, mock_request):
         """Valid script scenario input should pass validation."""
         data = {
