@@ -29,6 +29,7 @@ import PartialInputWarningDetails, {
   PARTIAL_INPUT_WARNING_TYPE,
 } from "src/sections/common/EvalsTasks/PartialInputWarningDetails";
 import { isEditableElement } from "src/utils/keyboardUtils";
+import { parsePythonReprIfNeeded } from "src/sections/develop-detail/DataTab/common";
 
 // ── Inline stat ──
 const StatPill = ({ label, value, color }) => (
@@ -144,7 +145,20 @@ const useColumns = () =>
         accessorKey: "score",
         header: "Score",
         size: 80,
-        cell: ({ getValue }) => <ScoreCell value={getValue()} />,
+        cell: ({ getValue, row }) => {
+          const score = getValue();
+          const rawResult = row.original?.result;
+          let resultScore = null;
+          // Only parse the result when there's no direct score to fall back on.
+          if (score == null && rawResult != null) {
+            const parsed = parsePythonReprIfNeeded(rawResult);
+            resultScore =
+              parsed && typeof parsed === "object" && !Array.isArray(parsed)
+                ? parsed.score
+                : null;
+          }
+          return <ScoreCell value={score ?? resultScore ?? null} />;
+        },
       },
       {
         id: "result",
@@ -152,8 +166,13 @@ const useColumns = () =>
         header: "Result",
         size: 100,
         cell: ({ getValue, row }) => {
-          const v = getValue();
-          if (!v) return null;
+          const raw = getValue();
+          if (!raw) return null;
+          const parsed = parsePythonReprIfNeeded(raw);
+          const v =
+            parsed && typeof parsed === "object" && !Array.isArray(parsed)
+              ? parsed.choice ?? parsed.score ?? raw
+              : parsed;
           const isPassed = v === "Passed" || v === "Pass";
           const isFailed = v === "Failed" || v === "Fail";
           const isError = v === "Error";
@@ -319,9 +338,25 @@ const DetailRow = ({ label, value, color, chip, chipColor, mono }) => {
   // so users can drill into nested keys (e.g. `prompt.messages.0.content`)
   // instead of seeing "[object Object]". Strings, numbers, booleans, and
   // null still render as plain text.
-  const isJsonValue =
-    !chip && value !== null && value !== undefined && typeof value === "object";
+  
 
+  const isResultRow =
+    typeof label === "string" && label.trim().toLowerCase() === "result";
+  // The result may arrive as a string like "{'score': 0.0, 'choice': 'Low'}"
+  // — parse it, then surface the choice/score rather than the literal text.
+  const parsedValue = isResultRow ? parsePythonReprIfNeeded(value) : value;
+  const resolvedValue =
+    isResultRow &&
+    parsedValue &&
+    typeof parsedValue === "object" &&
+    !Array.isArray(parsedValue)
+      ? parsedValue.choice ?? parsedValue.score ?? parsedValue
+      : parsedValue;
+  const isJsonValue =
+    !chip &&
+    resolvedValue !== null &&
+    resolvedValue !== undefined &&
+    typeof resolvedValue === "object";
   return (
     <Box
       sx={{
@@ -358,14 +393,14 @@ const DetailRow = ({ label, value, color, chip, chipColor, mono }) => {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         {chip ? (
           <Chip
-            label={value}
+            label={resolvedValue}
             size="small"
             color={chipColor || "default"}
             variant="outlined"
             sx={{ fontSize: "11px", height: 20 }}
           />
         ) : isJsonValue ? (
-          <ExpandableJson value={value} />
+          <ExpandableJson value={resolvedValue} />
         ) : (
           <Typography
             variant="body2"
@@ -376,7 +411,7 @@ const DetailRow = ({ label, value, color, chip, chipColor, mono }) => {
               wordBreak: "break-word",
             }}
           >
-            {value}
+            {resolvedValue}
           </Typography>
         )}
       </Box>
@@ -601,6 +636,14 @@ const DetailPanelContent = ({ row, isDark }) => {
   const detail = row.detail || {};
   const warnings = row.warnings || detail.warnings || [];
   const json = useMemo(() => JSON.stringify(detail, null, 2), [detail]);
+  const parsedResult = parsePythonReprIfNeeded(row.result);
+  const resultScore =
+    parsedResult &&
+    typeof parsedResult === "object" &&
+    !Array.isArray(parsedResult)
+      ? parsedResult.score
+      : null;
+  const effectiveScore = row.score ?? resultScore ?? null;
   return (
     <Box
       sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
@@ -678,17 +721,17 @@ const DetailPanelContent = ({ row, isDark }) => {
               <DetailRow
                 label="Score"
                 value={
-                  row.score != null
-                    ? typeof row.score === "number"
-                      ? row.score.toFixed(2)
-                      : String(row.score)
+                  effectiveScore != null
+                    ? typeof effectiveScore === "number"
+                      ? effectiveScore.toFixed(2)
+                      : String(effectiveScore)
                     : "—"
                 }
                 color={
-                  typeof row.score === "number"
-                    ? row.score >= 0.7
+                  typeof effectiveScore === "number"
+                    ? effectiveScore >= 0.7
                       ? "success.main"
-                      : row.score >= 0.3
+                      : effectiveScore >= 0.3
                         ? "warning.main"
                         : "error.main"
                     : undefined
