@@ -1550,17 +1550,24 @@ export default function ErrorMetadataPanel({ error }) {
         </Section>
 
         {/* ── AI Metadata ── */}
+        {/* Trace-scoped fields (model, version, project, evalScore, traceId)
+            come from `sidebar.aiMetadata` so they re-render when the user
+            switches traces. Cluster-scoped fields (agent, pipeline,
+            connector) stay on `error.*`. Fall back to `error.*` only while
+            the sidebar query is still loading its first response. */}
         <Section title="AI Metadata">
           <Stack gap={0.5}>
             <MetaRow
               label="Model"
-              value={error.model}
+              value={sidebar?.aiMetadata?.model ?? error.model}
               icon="mdi:brain"
               monospace
             />
             <MetaRow
               label="Version"
-              value={error.modelVersion}
+              value={
+                sidebar?.aiMetadata?.modelVersion ?? error.modelVersion
+              }
               icon="mdi:tag-outline"
               monospace
             />
@@ -1580,19 +1587,21 @@ export default function ErrorMetadataPanel({ error }) {
             )}
             <MetaRow
               label="Project"
-              value={error.project}
+              value={sidebar?.aiMetadata?.project ?? error.project}
               icon="mdi:folder-outline"
             />
-            {error.evalScore != null && (
+            {(sidebar?.aiMetadata?.evalScore ?? error.evalScore) != null && (
               <MetaRow
                 label="Eval score"
-                value={`${error.evalScore.toFixed(2)} / 1.00`}
+                value={`${(
+                  sidebar?.aiMetadata?.evalScore ?? error.evalScore
+                ).toFixed(2)} / 1.00`}
                 icon="mdi:chart-line"
               />
             )}
             <MetaRow
               label="Trace ID"
-              value={error.traceId}
+              value={sidebar?.aiMetadata?.traceId ?? error.traceId}
               icon="mdi:sitemap-outline"
               monospace
             />
